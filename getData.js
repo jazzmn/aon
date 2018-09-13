@@ -50,6 +50,7 @@ const reqP = (reqOpt)=>{
 	  qs: 
 	   { ts_from: 15012938012 } //TODO: params vervollstaendigen
 	})
+	let data=await neatCsv(csvData)
 	logger.debug(csvData)
 	
 	logger.info("login to dot4SaKpiRepository: "+config.dot4SaKpiRepository.baseUrl)
@@ -59,25 +60,19 @@ const reqP = (reqOpt)=>{
 	  form: 
 	   { 'apiKey': config.dot4SaKpiRepository.apiKey }
 	})
-	, kpiRepToken=kpiRepLogin['x-api-key']
+	, kpiRepToken=kpiRepLogin.data['access_token']
 	
 	logger.info("get Dot4 service IDs from dot4SaKpiRepository")
 	let allServices=await reqP({ method: 'GET',
 	  url: config.dot4SaKpiRepository.baseUrl+'/service',
-	  headers: { 'x-api-key': kpiRepToken },
-	  json: true,
-	  form: 
-	   { 'apiKey': config.dot4SaKpiRepository.apiKey }
+	  headers: { 'Authorization': 'Bearer '+kpiRepToken },
+	  json: true
 	})
-	, serviceName="Printing FollowMe"
-	
-	//TODO:
-	// woher kommt der service name
-	, serviceUid=_.get( _.find(allServices.data, { name: serviceName }), 'uid')
+	, serviceName="Printing FollowMe" //TODO: woher kommt der service name
+	, serviceUid=_.get( _.find(allServices.data, { name: 'Printing '+serviceName }), 'uid')
 	
 	//TODO:
 	// calculate kpi
-	let data=await neatCsv(csvData)
 	let calculatedKpi={
 		serviceUid
 		, value: 1
@@ -89,7 +84,8 @@ const reqP = (reqOpt)=>{
 	  headers: { 'x-api-key': kpiRepToken },
 	  form: 
 	   { serviceUid: calculatedKpi.serviceUid,
-		 paperCountBW: calculatedKpi.value } //TODO: woher kommt dieser Key
+		 volumeTotal: calculatedKpi.value ,
+		 volumeColor: calculatedKpi.value } //TODO: woher kommt dieser Key
 	})
 })().catch(e => {
    logger.error(e)
