@@ -38,7 +38,7 @@ const reqP = (reqOpt)=>{
 			if(error || (response.statusCode!=200 && response.statusCode!=302))
 				return reject(
 					"occured on URL "+reqOpt.url+", "+
-					(error || "response.statusCode: "+response.statusCode+"\n"+JSON.stringify(response))
+					(error || JSON.stringify(response))
 				)
 			
 			// logger.debug(response.headers['set-cookie'])
@@ -64,7 +64,8 @@ const reqP = (reqOpt)=>{
 	logger.debug(cookieJar.getCookies(config.taBox.baseUrl))
 	if(!cookieJar.getCookies(config.taBox.baseUrl).length)
 		throw new Error("won't work without cookies")
-	
+
+		
 	logger.info("get csvData from TA-Box")
 	let data=await reqP({ method: 'GET',
 	  url: config.taBox.baseUrl+'/cgi-bin/getJSON',
@@ -72,12 +73,12 @@ const reqP = (reqOpt)=>{
 	  json: true,
 	  qs: { 
 		view: "vol_group"
-		, from_district: 0
+		// , from_district: 0
 		, period: "spec"
 		, from_ts: 1536703200 //millis/1000 und GMT 0
-		, to_district: 0
+		// , to_district: 0
 		, to_ts: 1536789599 //millis/1000 und GMT 0
-		, _: 1536845357333 //millis von einlog-zeit
+		// , _: 1536845357333 //millis von einlog-zeit
 	  } //TODO: millis auf letzten oder gewuenschten tag umstellen
 	})
 
