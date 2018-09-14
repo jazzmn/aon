@@ -22,12 +22,19 @@ const logger = log4js.getLogger(os.hostname());
 
 const reqP = (reqOpt)=>{
 	return new Promise((resolve, reject)=>{
-		let options={}
+		let options={
+			user_agent: "Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko"
+			// , follow_set_cookies: true
+			// , follow_max: 0
+		}
 		if(reqOpt.url.indexOf(config.taBox.baseUrl)==-1)
 			options.proxy = config.proxy
 		
 		if(reqOpt.sessionCookie)
 			options.cookies=reqOpt.sessionCookie
+		
+		if(reqOpt.json)
+			options.json=true
 		
 		// logger.debug(reqOpt.form || reqOpt.qs)
 		needle.request(reqOpt.method, reqOpt.url, reqOpt.form || reqOpt.qs, options, function (error, response) {
