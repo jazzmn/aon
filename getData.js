@@ -3,7 +3,7 @@
 const _=require('lodash');
 const log4js = require("log4js"), log4js_extend = require("log4js-extend");
 const os=require('os');
-const request = require('request')
+const needle = require('needle')
 // const neatCsv = require('neat-csv');
 const moment = require('moment');
 moment.locale('de')
@@ -20,29 +20,25 @@ log4js_extend(log4js, {
 });
 const logger = log4js.getLogger(os.hostname());
 
-const cookieJar=request.jar()
-, request_TA = request.defaults({
-	jar: cookieJar
-})
-, request_proxied = request.defaults({
-	'proxy': config.proxy
-	, strictSSL: false
-})
-
 const reqP = (reqOpt)=>{
 	return new Promise((resolve, reject)=>{
-		let myReq=reqOpt.url.indexOf(config.taBox.baseUrl)!=-1?request_TA:request_proxied
+		let options={}
+		if(reqOpt.url.indexOf(config.taBox.baseUrl)==-1)
+			options.proxy = config.proxy
 		
-		// logger.debug(reqOpt)
-		myReq(reqOpt, function (error, response, body) {
+		if(reqOpt.sessionCookie)
+			options.cookies=reqOpt.sessionCookie
+		
+		// logger.debug(reqOpt.form || reqOpt.qs)
+		needle.request(reqOpt.method, reqOpt.url, reqOpt.form || reqOpt.qs, options, function (error, response) {
 			if(error || (response.statusCode!=200 && response.statusCode!=302))
 				return reject(
 					"occured on URL "+reqOpt.url+", "+
-					(error || JSON.stringify(response))
+					(error || JSON.stringify(response.body))
 				)
 			
 			// logger.debug(response.headers['set-cookie'])
-			resolve(body)
+			resolve(response)
 		})
 	})
 }
@@ -51,7 +47,7 @@ const reqP = (reqOpt)=>{
 	
 	logger.info("login to TA-Box: "+config.taBox.baseUrl)
 	let startUrl=config.taBox.baseUrl+'/cgi-bin/login'
-	await reqP({ method: 'POST',
+	let resp=await reqP({ method: 'POST',
 	  url: startUrl,
 	  // jar: cookieJar,
 	  headers: 
@@ -61,13 +57,16 @@ const reqP = (reqOpt)=>{
 		 password: config.taBox.password }
 	})
 	
-	logger.debug(cookieJar.getCookies(config.taBox.baseUrl))
-	if(!cookieJar.getCookies(config.taBox.baseUrl).length)
+	logger.debug(_.keys(resp))
+	logger.debug(resp.cookies)
+	let sessionCookie=resp.cookies
+	if(!resp.cookies)
 		throw new Error("won't work without cookies")
 
 		
 	logger.info("get csvData from TA-Box")
-	let data=await reqP({ method: 'GET',
+	resp=await reqP({ method: 'GET',
+	  sessionCookie,
 	  url: config.taBox.baseUrl+'/cgi-bin/getJSON',
 	  // jar: cookieJar,
 	  json: true,
@@ -82,6 +81,7 @@ const reqP = (reqOpt)=>{
 	  } //TODO: millis auf letzten oder gewuenschten tag umstellen
 	})
 
+	let data=resp.body;
 	logger.debug(data)
 	/*
 	{
@@ -95,6 +95,13 @@ const reqP = (reqOpt)=>{
             "groupfilter": ""
         },
 	*/
+	
+	if(!data.data){
+		logger.debug(_.keys(resp.req))
+		logger.debug(resp.req._header)
+		logger.debug(resp.req._headerSent)
+		throw new Error()
+	}
 	
 	logger.info("login to dot4SaKpiRepository: "+config.dot4SaKpiRepository.baseUrl)
 	let kpiRepLogin=await reqP({ method: 'POST',
