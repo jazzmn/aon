@@ -50,7 +50,6 @@ const reqP = (reqOpt)=>{
 						JSON.stringify(response)
 				)
 			
-			logger.debug(response.cookies)
 			resolve(response)
 		})
 	})
@@ -70,8 +69,8 @@ const reqP = (reqOpt)=>{
 		 password: config.taBox.password }
 	})
 	
-	logger.debug(_.keys(resp.cookies))
-	if(!_.keys(resp.cookies).length)
+	logger.debug(CookieJar._jar.store.idx)
+	if(!_.keys(CookieJar._jar.store.idx).length)
 		throw new Error("won't work without cookies")
 
 		
