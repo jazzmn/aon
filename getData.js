@@ -31,17 +31,20 @@ const cookieJar=request.jar()
 
 const reqP = (reqOpt)=>{
 	return new Promise((resolve, reject)=>{
-		let myReq=reqOpt.url.indexOf(config.taBox.baseUrl)!=-1?request_TA:request_proxied
+		let taBox=reqOpt.url.indexOf(config.taBox.baseUrl)!=-1
+		, myReq=taBox?request_TA:request_proxied
 		
 		// logger.debug(reqOpt)
 		myReq(reqOpt, function (error, response, body) {
-			if(error || (response.statusCode!=200 && response.statusCode!=302))
+			if(error || 
+				(taBox && response.statusCode!=200 && response.statusCode!=302) ||
+				(!taBox && response.statusCode!=200)
+			)
 				return reject(
 					"occured on URL "+reqOpt.url+", "+
 					(error || JSON.stringify(response))
 				)
 			
-			// logger.debug(response.headers['set-cookie'])
 			resolve(body)
 		})
 	})
@@ -53,7 +56,6 @@ const reqP = (reqOpt)=>{
 	let startUrl=config.taBox.baseUrl+'/cgi-bin/login'
 	await reqP({ method: 'POST',
 	  url: startUrl,
-	  // jar: cookieJar,
 	  headers: 
 	   { 'content-type': 'application/x-www-form-urlencoded' },
 	  form: 
@@ -69,8 +71,8 @@ const reqP = (reqOpt)=>{
 	logger.info("get csvData from TA-Box")
 	let data=await reqP({ method: 'GET',
 	  url: config.taBox.baseUrl+'/cgi-bin/getJSON',
-	  // jar: cookieJar,
 	  json: true,
+	  gzip: true,
 	  qs: { 
 		view: "vol_group"
 		// , from_district: 0
@@ -103,7 +105,8 @@ const reqP = (reqOpt)=>{
 	  form: 
 	   { 'apiKey': config.dot4SaKpiRepository.apiKey }
 	})
-	, kpiRepToken=kpiRepLogin.data['access_token']
+	logger.debug(kpiRepLogin)
+	let kpiRepToken=kpiRepLogin.data['access_token']
 	
 	logger.info("get Dot4 service IDs from dot4SaKpiRepository")
 	let allServices=await reqP({ method: 'GET',
