@@ -4,6 +4,8 @@
   "description": "get data",
   "main": "getData.js",
   "dependencies": {
+    "async": "^2.6.1",
+    "command-line-args": "^5.0.2",
     "lodash": "^4.17.10",
     "log4js": "^2.5.3",
     "log4js-extend": "^0.2.1",
