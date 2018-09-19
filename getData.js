@@ -5,12 +5,9 @@ const async = require("async");
 const log4js = require("log4js"), log4js_extend = require("log4js-extend");
 const os=require('os');
 const request = require('request')
-// const neatCsv = require('neat-csv');
+const commandLineArgs = require('command-line-args');
 const moment = require('moment');
 moment.locale('de')
-
-// const mkdirp = require('mkdirp');
-const commandLineArgs = require('command-line-args');
 
 const config = require("./config");
 
@@ -148,7 +145,7 @@ const reqP = (reqOpt)=>{
 					
 					body.group_name=printServiceName
 					
-					// if(ta_groupId2printServiceName[group_id] == 'AON Frankfurt') //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-16'
+					// if(ta_groupId2printServiceName[group_id].indexOf(' Frankfurt')!=-1) //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-16'
 						// logger.debug(body)
 					
 					fecb(err,body)
@@ -160,7 +157,7 @@ const reqP = (reqOpt)=>{
 					let dev_total_vol=0
 					, dev_color_vol=0
 					
-					// if(g.group_name == 'AON Frankfurt') //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-17'
+					// if(g.group_name.indexOf(' Frankfurt')!=-1) //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-17'
 						// logger.debug(g.data)
 						
 					_.forEach(g.data, d=>{
