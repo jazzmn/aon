@@ -15,7 +15,7 @@ const commandLineArgs = require('command-line-args');
 const config = require("./config");
 
 const optionDefinitions = [
-  { name: 'daysBack', alias: 'd', type: Number, defaultValue: 0 }
+  { name: 'daysBack', alias: 'd', type: Number, defaultValue: 1 }
   ,  { name: 'fixedDay', alias: 'f', type: String }
 ];
 const options = commandLineArgs(optionDefinitions);
@@ -83,13 +83,15 @@ const reqP = (reqOpt)=>{
 	 * load IDs from TA-Box
 	 */
 	let ta_groupId2printServiceName={}
-	,  from_ts=parseInt(moment( now.format("YYYY-MM-DDT22:00:00.000+00:00") ).format('X'),10)
+	,  from_ts=parseInt(moment( now.startOf('day').format() ).format('X'),10)
 	let loadIds=await reqP({ method: 'GET',
 		url: config.taBox.baseUrl+'/cgi-bin/getJSON',
 		json: true,
 		gzip: true,
 		qs: { 
 			view: "vol_group"
+			, from_district: 0
+			, to_district: 0
 			, period: "spec"
 			, from_ts //millis/1000 und GMT 0
 			, to_ts: from_ts+86399 //millis/1000 und GMT 0
@@ -107,12 +109,13 @@ const reqP = (reqOpt)=>{
 	 */
 	logger.info("get data from TA-Box")
 	let dataPerDay=await new Promise((resolve, reject)=>{
-		let nTimes=options.fixedDay?1:options.daysBack+1;
-		async.timesLimit(nTimes, 1, function(n, next) {
+		let nDays=options.fixedDay?1:options.daysBack+1;
+		async.timesLimit(nDays, 1, function(n, next) {
 			let workingDay=options.fixedDay ? moment(options.fixedDay) : moment(now).subtract(n,'days');
-			let from_ts=parseInt(moment( workingDay.format("YYYY-MM-DDT22:00:00.000+00:00") ).format('X'),10)
+			workingDay=moment(workingDay.startOf('day').format())
+			let from_ts=parseInt(workingDay.format('X'),10)
 			
-			logger.debug(n+".) loading data for "+workingDay.format('L'))
+			logger.debug(n+".) loading data for "+workingDay.format('L')+". from_ts: "+from_ts)
 
 			let dailyData={
 				day: workingDay
@@ -126,10 +129,10 @@ const reqP = (reqOpt)=>{
 				  gzip: true,
 				  qs: { 
 					view: "vol_dev_group"
-					// , from_district: 0
+					, from_district: 0
 					, period: "spec"
 					, from_ts //millis/1000 und GMT 0
-					// , to_district: 0
+					, to_district: 0
 					, to_ts: from_ts+86399 //millis/1000 und GMT 0
 					// , _: 1536845357333 //millis von einlog-zeit
 					, group_id
@@ -140,11 +143,13 @@ const reqP = (reqOpt)=>{
 						err="can't load data for ("+workingDay.format('LLL')+")"
 						
 					// logger.debug(body)
-					// process.exit(0)
+					if(_.some(body.data,{valid_start_ts: ''}))
+						throw new Error("invalid start_ts: "+from_ts+ " (type: "+(typeof from_ts)+")")
+					
 					body.group_name=printServiceName
 					
-					if(ta_groupId2printServiceName[group_id] == 'AON Frankfurt') //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-16'
-						logger.debug(body)
+					// if(ta_groupId2printServiceName[group_id] == 'AON Frankfurt') //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-16'
+						// logger.debug(body)
 					
 					fecb(err,body)
 				})
@@ -155,8 +160,8 @@ const reqP = (reqOpt)=>{
 					let dev_total_vol=0
 					, dev_color_vol=0
 					
-					if(g.group_name == 'AON Frankfurt') //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-17'
-						logger.debug(g.data)
+					// if(g.group_name == 'AON Frankfurt') //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-17'
+						// logger.debug(g.data)
 						
 					_.forEach(g.data, d=>{
 						if(d.dev_total_vol)
@@ -216,11 +221,8 @@ const reqP = (reqOpt)=>{
 			let serviceName=dataOfService.group_name
 			, serviceUid=_.get( _.find(allServices.data, { name: 'Printing '+serviceName }), 'uid')
 			
-			if(!serviceUid) {
-				logger.error("no dot4 service found for "+serviceName+". Skipping it for now.")
-				process.exit(1)
-				return
-			}
+			if(!serviceUid) 
+				throw new Error("no dot4 service found for "+serviceName+". Skipping it for now.")
 			
 			serviceUid2Name[serviceUid]=serviceName
 			
@@ -229,7 +231,8 @@ const reqP = (reqOpt)=>{
 			if(!dataPerService[serviceUid])
 				dataPerService[serviceUid]=[]
 			dataPerService[serviceUid].push({
-				timestamp: d.day.utc().format()
+				// timestamp: d.day.format()
+				timestamp: moment(d.day).add(1,"days").format() //ToDo: soll ein Tag addiert werden oder ist .utcOffset() korrekt?
 				, volumeTotal: dataOfService.group_total_vol
 				, volumeColor: dataOfService.group_color_vol
 			})
@@ -244,7 +247,7 @@ const reqP = (reqOpt)=>{
 	await new Promise((resolve, reject)=>{
 		async.eachOfLimit(dataPerService, 1, function (kpis, serviceUid, next) {
 			logger.info("upload new kpi values ("+kpis.length+" days) into dot4SaKpiRepository for service: "+serviceUid2Name[serviceUid]+" ("+serviceUid+")")
-			logger.debug("kpis: "+JSON.stringify(kpis))
+			// logger.debug("kpis: "+JSON.stringify(kpis))
 			
 			request_proxied({ method: 'POST',
 			  url: config.dot4SaKpiRepository.baseUrl+'/service/customkpi-collection',
