@@ -4,8 +4,10 @@ const _=require('lodash');
 const async = require("async");
 const log4js = require("log4js"), log4js_extend = require("log4js-extend");
 const os=require('os');
+const fs=require('fs');
 const request = require('request')
 const commandLineArgs = require('command-line-args');
+const csvWriter = require('csv-write-stream')
 const moment = require('moment');
 moment.locale('de')
 
@@ -13,7 +15,9 @@ const config = require("./config");
 
 const optionDefinitions = [
   { name: 'daysBack', alias: 'd', type: Number, defaultValue: 1 }
-  ,  { name: 'fixedDay', alias: 'f', type: String }
+  , { name: 'fixedDay', alias: 'f', type: String }
+  , { name: 'csvExport', alias: 'c', type: Boolean }
+  , { name: 'suppressDot4Upload', alias: 's', type: Boolean }
 ];
 const options = commandLineArgs(optionDefinitions);
 
@@ -58,6 +62,12 @@ const reqP = (reqOpt)=>{
 
 (async () => {
 	
+	let writer = csvWriter({newline: '\r\n'})
+	/** open csv */
+	if(options.csvExport){
+		writer.pipe(fs.createWriteStream('out.csv'))
+	}
+
 	/**
 	 * login to TA-Box
 	 */
@@ -234,41 +244,56 @@ const reqP = (reqOpt)=>{
 				, volumeColor: dataOfService.group_color_vol
 			})
 			// logger.debug(_.last(dataPerService[serviceUid]))
+			
+			/** write CSV */
+			if(options.csvExport){
+				writer.write({
+					serviceName, serviceUid, date: d.day.format("YYYY-MM-DD")
+					, volumeTotal: dataOfService.group_total_vol
+					, volumeColor: dataOfService.group_color_vol
+				})
+			}
 		})
 	})
+	
+	/** close CSV */
+	if(options.csvExport){
+		writer.end()
+	}
 	
 	/**
 	 * upload new kpi values into Dot4 Kpi Repository
 	 * (one request per Service with all kpis and days)
 	 */
-	await new Promise((resolve, reject)=>{
-		async.eachOfLimit(dataPerService, 1, function (kpis, serviceUid, next) {
-			logger.info("upload new kpi values ("+kpis.length+" days) into dot4SaKpiRepository for service: "+serviceUid2Name[serviceUid]+" ("+serviceUid+")")
-			// logger.debug("kpis: "+JSON.stringify(kpis))
-			
-			request_proxied({ method: 'POST',
-			  url: config.dot4SaKpiRepository.baseUrl+'/service/customkpi-collection',
-			  headers: { 'Authorization': 'Bearer '+kpiRepToken },
-			  json: true,
-			  body: 
-			   { serviceUid,
-				 kpis
-			   }
-			}, function (error, response, body) {
-				let err=error
-				if(!error && _.has(body,"error"))
-					err=body.error
+	if(!options.suppressDot4Upload){
+		await new Promise((resolve, reject)=>{
+			async.eachOfLimit(dataPerService, 1, function (kpis, serviceUid, next) {
+				logger.info("upload new kpi values ("+kpis.length+" days) into dot4SaKpiRepository for service: "+serviceUid2Name[serviceUid]+" ("+serviceUid+")")
+				// logger.debug("kpis: "+JSON.stringify(kpis))
 				
-				// logger.debug(body)
-				next(err,body)
-			})
-		}, function (err) {
-			if(err)
-				return reject(err)
-			resolve()
-		});
-	})
-
+				request_proxied({ method: 'POST',
+				  url: config.dot4SaKpiRepository.baseUrl+'/service/customkpi-collection',
+				  headers: { 'Authorization': 'Bearer '+kpiRepToken },
+				  json: true,
+				  body: 
+				   { serviceUid,
+					 kpis
+				   }
+				}, function (error, response, body) {
+					let err=error
+					if(!error && _.has(body,"error"))
+						err=body.error
+					
+					// logger.debug(body)
+					next(err,body)
+				})
+			}, function (err) {
+				if(err)
+					return reject(err)
+				resolve()
+			});
+		})
+	}
 })().catch(e => {
    logger.error(e)
 });
