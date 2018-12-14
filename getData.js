@@ -3,7 +3,7 @@
 const _=require('lodash');
 const async = require("async");
 const log4js = require("log4js"), log4js_extend = require("log4js-extend");
-const os=require('os');
+// const os=require('os');
 const fs=require('fs');
 const request = require('request')
 const commandLineArgs = require('command-line-args');
@@ -26,7 +26,8 @@ log4js_extend(log4js, {
   path: __dirname,
   format: "(@file:@line:@column)"
 });
-const logger = log4js.getLogger(os.hostname())
+const logger = log4js.getLogger()
+, alertLogger = log4js.getLogger("alerts")
 , now=moment();
 
 const cookieJar=request.jar()
@@ -72,6 +73,8 @@ const reqP = (reqOpt)=>{
 	 * login to TA-Box
 	 */
 	logger.info("login to TA-Box: "+config.taBox.baseUrl)
+	alertLogger.info("login to TA-Box")
+	
 	let startUrl=config.taBox.baseUrl+'/cgi-bin/login'
 	await reqP({ method: 'POST',
 	  url: startUrl,
@@ -115,6 +118,7 @@ const reqP = (reqOpt)=>{
 	 * one request per day
 	 */
 	logger.info("get data from TA-Box")
+	alertLogger.info("get data from TA-Box")
 	let dataPerDay=await new Promise((resolve, reject)=>{
 		let nDays=options.fixedDay?1:options.daysBack+1;
 		async.timesLimit(nDays, 1, function(n, next) {
@@ -199,6 +203,8 @@ const reqP = (reqOpt)=>{
 	 * login to Dot4 Kpi Repository
 	 */
 	logger.info("login to dot4SaKpiRepository: "+config.dot4SaKpiRepository.baseUrl)
+	alertLogger.info("login to dot4SaKpiRepository")
+	
 	let kpiRepLogin=await reqP({ method: 'POST',
 	  url: config.dot4SaKpiRepository.baseUrl+'/token',
 	  json: true,
@@ -211,6 +217,7 @@ const reqP = (reqOpt)=>{
 	 * load Service IDs from Dot4 Kpi Repository
 	 */
 	logger.info("get Dot4 service IDs from dot4SaKpiRepository")
+	alertLogger.info("get Dot4 service IDs from dot4SaKpiRepository")
 	let allServices=await reqP({ method: 'GET',
 	  url: config.dot4SaKpiRepository.baseUrl+'/service',
 	  headers: { 'Authorization': 'Bearer '+kpiRepToken },
@@ -294,6 +301,10 @@ const reqP = (reqOpt)=>{
 			});
 		})
 	}
+	
+	logger.info("program finished")
+	alertLogger.info("program finished")
 })().catch(e => {
    logger.error(e)
+   alertLogger.error(e)
 });

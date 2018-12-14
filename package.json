@@ -4,6 +4,7 @@
   "description": "get data",
   "main": "getData.js",
   "dependencies": {
+    "@log4js-node/slack": "^1.0.0",
     "async": "^2.6.1",
     "command-line-args": "^5.0.2",
     "csv-write-stream": "^2.0.0",
