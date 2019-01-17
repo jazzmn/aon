@@ -119,7 +119,8 @@ const reqP = (reqOpt)=>{
 	 */
 	logger.info("get data from TA-Box")
 	alertLogger.info("get data from TA-Box")
-	let dataPerDay=await new Promise((resolve, reject)=>{
+	let missingData=[]
+	, dataPerDay=await new Promise((resolve, reject)=>{
 		let nDays=options.fixedDay?1:options.daysBack+1;
 		async.timesLimit(nDays, 1, function(n, next) {
 			let workingDay=options.fixedDay ? moment(options.fixedDay) : moment(now).subtract(n,'days');
@@ -171,15 +172,27 @@ const reqP = (reqOpt)=>{
 					let dev_total_vol=0
 					, dev_color_vol=0
 					
-					// if(g.group_name.indexOf(' Frankfurt')!=-1) //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-17'
-						// logger.debug(g.data)
+					// if(g.group_name.indexOf('Unita')!=-1) //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-17'
+						// logger.debug(g.data) //OUT!!!
 						
 					_.forEach(g.data, d=>{
-						if(d.dev_total_vol)
-							dev_total_vol += parseInt(d.dev_total_vol,10)
+						if(_.has(d,'dev_total_vol')){
+							if(d.dev_total_vol)
+								dev_total_vol += parseInt(d.dev_total_vol,10)
+						} else {
+							const d=`Beim Standort "${g.group_name} fehlt die Angabe von dev_total_vol. Ansicht in TA-Box geaendert?`
+							logger.warn(d)
+							missingData.push(d)
+						}
 						
-						if(d.dev_color_vol)
-							dev_color_vol += parseInt(d.dev_color_vol,10)
+						if(_.has(d,'dev_color_vol')){
+							if(d.dev_color_vol)
+								dev_color_vol += parseInt(d.dev_color_vol,10)
+						} else {
+							const d=`Beim Standort "${g.group_name} fehlt die Angabe von dev_color_vol. Ansicht in TA-Box geaendert?`
+							logger.warn(d)
+							missingData.push(d)
+						}
 					})
 					dailyData.data.push({
 						"group_total_vol": dev_total_vol
@@ -187,7 +200,7 @@ const reqP = (reqOpt)=>{
 						, "group_color_vol": dev_color_vol
 					})
 				})
-				// logger.debug(dailyData.data)
+				logger.debug(dailyData.data) //OUT!!!
 					
 				next(err, dailyData)
 			})
@@ -198,6 +211,12 @@ const reqP = (reqOpt)=>{
 		});
 	})
 	// logger.debug(dataPerDay)
+	
+	if(missingData.length) {
+		alertLogger.warn(missingData[0])
+		if(missingData.length>1)
+			alertLogger.warn(`Diese Meldung auch bei ${missingData.length-1} weiteren!`)
+	}
 
 	/**
 	 * login to Dot4 Kpi Repository
