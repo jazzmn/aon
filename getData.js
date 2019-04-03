@@ -1,14 +1,17 @@
 "use strict";
 
-const _=require('lodash');
-const async = require("async");
-const log4js = require("log4js"), log4js_extend = require("log4js-extend");
-// const os=require('os');
-const fs=require('fs');
-const request = require('request')
-const commandLineArgs = require('command-line-args');
-const csvWriter = require('csv-write-stream')
-const moment = require('moment');
+const _=require('lodash')
+, async = require("async")
+, cheerio = require('cheerio')
+, log4js = require("log4js"), log4js_extend = require("log4js-extend")
+// , os=require('os');
+, fs=require('fs')
+, request = require('request')
+, commandLineArgs = require('command-line-args')
+, csvWriter = require('csv-write-stream')
+, moment = require('moment')
+;
+
 moment.locale('de')
 
 const config = require("./config");
@@ -75,9 +78,8 @@ const reqP = (reqOpt)=>{
 	logger.info("login to TA-Box: "+config.taBox.baseUrl)
 	alertLogger.info("login to TA-Box")
 	
-	let startUrl=config.taBox.baseUrl+'/cgi-bin/login'
 	await reqP({ method: 'POST',
-	  url: startUrl,
+	  url: config.taBox.baseUrl+'/cgi-bin/login',
 	  headers: 
 	   { 'content-type': 'application/x-www-form-urlencoded' },
 	  form: 
@@ -90,10 +92,32 @@ const reqP = (reqOpt)=>{
 		throw new Error("won't work without cookies")
 
 	/**
+	 * set columns to be shown in view
+	 */
+	await reqP({ method: 'POST',
+	  url: config.taBox.baseUrl+'/cgi-bin/saveView',
+	  headers: 
+	   { 'content-type': 'application/x-www-form-urlencoded' },
+	  form: 
+	   { 
+		"view": "vol_dev_group"
+		, "id": null
+		// , "name": "AON Hamburg"
+		, "style": "sm"
+		, "save": "view"
+		, "fields": "dev_name,dev_serial,vol_from_ts,vol_c1_from,vol_to_ts,vol_c1_to,dev_total_vol,dev_color_vol"
+	   }
+	})
+	
+	
+	
+	/**
 	 * load IDs from TA-Box
 	 */
 	let ta_groupId2printServiceName={}
 	,  from_ts=parseInt(moment( now.startOf('day').format() ).format('X'),10)
+	logger.info("get available IDs and location names from TA-Box")
+/*	//Alter CODE, geht nicht, solange in Gruppen Volumen nur 0 eingetragen
 	let loadIds=await reqP({ method: 'GET',
 		url: config.taBox.baseUrl+'/cgi-bin/getJSON',
 		json: true,
@@ -111,7 +135,22 @@ const reqP = (reqOpt)=>{
 		ta_groupId2printServiceName[ d.group_id ] = d.group_name
 		logger.debug(d.group_id+" = "+d.group_name)
 	})
-
+*/
+	let $=cheerio.load( await reqP({ 
+		method: 'GET'
+		, url: config.taBox.baseUrl+'/cgi-bin/statistics'
+	}))
+	$('li','#tabnavi_volumes').each(function(i, elem) {
+	  let group_id=$(this).attr('id')
+	  , group_name=$(this).text()
+	  , group_id_num
+	  ;
+	  if(/tab-group-(\d+)/.test(group_id)){
+		  group_id_num=RegExp.$1
+		  ta_groupId2printServiceName[group_id_num]=group_name
+	  }
+	  logger.debug(`group_id_num: ${group_id_num}, group_name: ${group_name}`)
+	});
 	
 	/**
 	 * load data from TA-Box
@@ -119,13 +158,16 @@ const reqP = (reqOpt)=>{
 	 */
 	logger.info("get data from TA-Box")
 	alertLogger.info("get data from TA-Box")
-	let missingData=[]
+	let collectAlertLogger=[]
+	, dataCnt=0
 	, dataPerDay=await new Promise((resolve, reject)=>{
-		let nDays=options.fixedDay?1:options.daysBack+1;
+		let nDays=options.fixedDay?1:options.daysBack+1
+		;
 		async.timesLimit(nDays, 1, function(n, next) {
 			let workingDay=options.fixedDay ? moment(options.fixedDay) : moment(now).subtract(n,'days');
 			workingDay=moment(workingDay.startOf('day').format())
 			let from_ts=parseInt(workingDay.format('X'),10)
+			;
 			
 			logger.debug(n+".) loading data for "+workingDay.format('L')+". from_ts: "+from_ts)
 
@@ -161,7 +203,7 @@ const reqP = (reqOpt)=>{
 					body.group_name=printServiceName
 					
 					// if(ta_groupId2printServiceName[group_id].indexOf(' Frankfurt')!=-1) //OUT!!!!!!  && workingDay.format('YYYY-MM-DD')=='2018-09-16'
-						// logger.debug(body)
+						 // logger.debug(body)
 					
 					fecb(err,body)
 				})
@@ -180,18 +222,18 @@ const reqP = (reqOpt)=>{
 							if(d.dev_total_vol)
 								dev_total_vol += parseInt(d.dev_total_vol,10)
 						} else {
-							const d=`Beim Standort "${g.group_name} fehlt die Angabe von dev_total_vol. Ansicht in TA-Box geaendert?`
-							logger.warn(d)
-							missingData.push(d)
+							const msg=`Beim Standort "${g.group_name} fehlt die Angabe von dev_total_vol. Ansicht in TA-Box geaendert?`
+							logger.warn(msgmsg)
+							collectAlertLogger.push({msg, level: "warn"})
 						}
 						
 						if(_.has(d,'dev_color_vol')){
 							if(d.dev_color_vol)
 								dev_color_vol += parseInt(d.dev_color_vol,10)
 						} else {
-							const d=`Beim Standort "${g.group_name} fehlt die Angabe von dev_color_vol. Ansicht in TA-Box geaendert?`
-							logger.warn(d)
-							missingData.push(d)
+							const msg=`Beim Standort "${g.group_name} fehlt die Angabe von dev_color_vol. Ansicht in TA-Box geaendert?`
+							logger.warn(msg)
+							collectAlertLogger.push({msg, level: "warn"})
 						}
 					})
 					dailyData.data.push({
@@ -200,7 +242,10 @@ const reqP = (reqOpt)=>{
 						, "group_color_vol": dev_color_vol
 					})
 				})
-				logger.debug(dailyData.data) //OUT!!!
+				dataCnt+=_.get(dailyData,"data.length")||0
+				
+				if(n===0)
+					logger.debug(dailyData.data)
 					
 				next(err, dailyData)
 			})
@@ -212,10 +257,20 @@ const reqP = (reqOpt)=>{
 	})
 	// logger.debug(dataPerDay)
 	
-	if(missingData.length) {
-		alertLogger.warn(missingData[0])
-		if(missingData.length>1)
-			alertLogger.warn(`Diese Meldung auch bei ${missingData.length-1} weiteren!`)
+	collectAlertLogger=_.uniqBy(collectAlertLogger, 'msg')
+	if(collectAlertLogger.length) {
+		const numOutputsWanted=3
+		for(let i=0;i<numOutputsWanted; i++){
+			const {msg, level}=collectAlertLogger[i]
+			alertLogger[level](msg)
+		}
+		if(collectAlertLogger.length>1)
+			alertLogger.warn(`${collectAlertLogger.length-numOutputsWanted} weitere Meldungen zu fehlenden Daten!`)
+	}
+	collectAlertLogger=[]
+	
+	if(!dataCnt){
+		throw new Error("no data found. cannot upload anything.")
 	}
 
 	/**
@@ -254,8 +309,12 @@ const reqP = (reqOpt)=>{
 			let serviceName=dataOfService.group_name
 			, serviceUid=_.get( _.find(allServices.data, { name: 'Printing '+serviceName }), 'uid')
 			
-			if(!serviceUid) 
-				throw new Error("no dot4 service found for "+serviceName+". Skipping it for now.")
+			if(!serviceUid) {
+				const err="no dot4 service found for "+serviceName+". Skipping it for now."
+				logger.error(err)
+				collectAlertLogger.push({msg: err, level: "error"})
+				return;
+			}
 			
 			serviceUid2Name[serviceUid]=serviceName
 			
@@ -281,6 +340,9 @@ const reqP = (reqOpt)=>{
 			}
 		})
 	})
+	
+	_.forEach(_.uniqBy(collectAlertLogger, 'msg'), log=>alertLogger[log.level](log.msg))
+	collectAlertLogger=[]
 	
 	/** close CSV */
 	if(options.csvExport){
@@ -321,8 +383,9 @@ const reqP = (reqOpt)=>{
 		})
 	}
 	
-	logger.info("program finished")
-	alertLogger.info("program finished")
+	const fMsg=`program finished (${dataCnt} new data sets).`
+	logger.info(fMsg)
+	alertLogger.info(fMsg)
 })().catch(e => {
    logger.error(e)
    alertLogger.error(e)
